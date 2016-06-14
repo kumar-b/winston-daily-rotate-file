@@ -26,6 +26,15 @@ var transports = {
   'prepended file': new DailyRotateFile({
     filename: path.join(fixturesDir, 'testfilename.log'),
     prepend: true
+  }),
+  'weekday file': new DailyRotateFile({
+    filename: path.join(fixturesDir, 'testfilename_weekday'),
+    datePattern: '.ddd.log'
+  }),
+  'prepend weekday file': new DailyRotateFile({
+    filename: path.join(fixturesDir, 'testfilename_prepend_weekday.log'),
+    datePattern: 'ddd-',
+    prepend: true
   })
 };
 
@@ -61,6 +70,16 @@ describe('winston/transports/daily-rotate-file', function () {
         });
 
         expect(transport._getFilename()).to.equal('prepend-false.log.' + now);
+      });
+
+      it('should not add leading dot if one is not provided with datePattern', function () {
+        var now = moment().format('YYYY-MM-DD');
+        var transport = new DailyRotateFile({
+          filename: path.join(fixturesDir, 'log'),
+          datePattern: '-yyyy-MM-dd.log'
+        });
+
+        expect(transport._getFilename()).to.equal('log-' + now + '.log');
       });
 
       it('should remove leading dot if one is provided with datePattern when prepend option is true', function () {
@@ -249,15 +268,17 @@ describe('winston/transports/daily-rotate-file', function () {
           var transport;
           var rotationLogPath = path.join(fixturesDir, 'rotations');
 
-          beforeEach(function () {
+          beforeEach(function (done) {
             this.time = new Date(patterns[pattern].start);
             tk.travel(this.time);
             rimraf.sync(rotationLogPath);
-            mkdirp(rotationLogPath);
+            mkdirp.sync(rotationLogPath);
             transport = new DailyRotateFile({
               filename: path.join(rotationLogPath, 'test-rotation.log'),
               datePattern: patterns[pattern].pattern
             });
+
+            done();
           });
 
           afterEach(function () {
@@ -265,32 +286,42 @@ describe('winston/transports/daily-rotate-file', function () {
           });
 
           it('should create log with proper timestamp', function (done) {
-            transport.log('error', 'test message');
-            // timeout for winston to create the file.
-            setTimeout(function () {
+            var self = this;
+
+            transport.log('error', 'test message', {}, function (err) {
+              if (err) {
+                done(err);
+              }
+
               var filesCreated = fs.readdirSync(rotationLogPath);
               expect(filesCreated.length).to.eql(1);
               expect(filesCreated).to.include(patterns[pattern].oldfile);
-              this.time = new Date(patterns[pattern].mid);
-              tk.travel(this.time);
-              transport.log('error', '2nd test message');
-              filesCreated = fs.readdirSync(rotationLogPath);
-              expect(filesCreated.length).to.eql(1);
-              expect(filesCreated).to.include(patterns[pattern].oldfile);
-              this.time = new Date(patterns[pattern].end);
-              tk.travel(this.time);
-              transport.log('error', '3rd test message');
-              setTimeout(function () {
+              self.time = new Date(patterns[pattern].mid);
+              tk.travel(self.time);
+              transport.log('error', '2nd test message', {}, function (err) {
+                if (err) {
+                  done(err);
+                }
+
                 filesCreated = fs.readdirSync(rotationLogPath);
-                expect(filesCreated.length).to.eql(2);
-                expect(filesCreated).to.include(patterns[pattern].newfile);
-                transport.close();
-                // timeout for winston to close the file
-                setTimeout(function () {
+                expect(filesCreated.length).to.eql(1);
+                expect(filesCreated).to.include(patterns[pattern].oldfile);
+                self.time = new Date(patterns[pattern].end);
+                tk.travel(self.time);
+                transport.log('error', '3rd test message', {}, function (err) {
+                  if (err) {
+                    done(err);
+                  }
+
+                  filesCreated = fs.readdirSync(rotationLogPath);
+                  expect(filesCreated.length).to.eql(2);
+                  expect(filesCreated).to.include(patterns[pattern].newfile);
+                  transport.close();
+
                   done();
-                }, 500);
-              }, 500);
-            }, 500);
+                });
+              });
+            });
           });
         });
       });
@@ -310,17 +341,19 @@ describe('winston/transports/daily-rotate-file', function () {
         var transport;
         var rotationLogPath = path.join(fixturesDir, 'rotations');
 
-        beforeEach(function () {
+        beforeEach(function (done) {
           this.time = new Date(dailyRotationPattern.start);
           tk.travel(this.time);
           rimraf.sync(rotationLogPath);
-          mkdirp(rotationLogPath);
+          mkdirp.sync(rotationLogPath);
           transport = new DailyRotateFile({
             filename: path.join(rotationLogPath, 'test-rotation.log'),
             datePattern: dailyRotationPattern.pattern,
             maxFiles: 2,
             maxsize: 100
           });
+
+          done();
         });
 
         afterEach(function () {
@@ -328,26 +361,40 @@ describe('winston/transports/daily-rotate-file', function () {
         });
 
         it('should properly rotate log with old files getting deleted', function (done) {
-          transport.log('error', 'test message with more than 100 bytes data');
-          setTimeout(function () {
-            transport.log('error', '2nd test with more than 100 bytes data');
-            setTimeout(function () {
-              this.time = new Date(dailyRotationPattern.mid);
-              tk.travel(this.time);
-              transport.log('error', '3rd test');
-              setTimeout(function () {
-                transport.log('error', '4th test message with more than 100 bytes data');
-                setTimeout(function () {
+          var self = this;
+
+          transport.log('error', 'test message with more than 100 bytes data', {}, function (err) {
+            if (err) {
+              done(err);
+            }
+
+            transport.log('error', '2nd test with more than 100 bytes data', {}, function (err) {
+              if (err) {
+                done(err);
+              }
+
+              self.time = new Date(dailyRotationPattern.mid);
+              tk.travel(self.time);
+              transport.log('error', '3rd test', {}, function (err) {
+                if (err) {
+                  done(err);
+                }
+
+                transport.log('error', '4th test message with more than 100 bytes data', {}, function (err) {
+                  if (err) {
+                    done(err);
+                  }
+
                   var filesCreated = fs.readdirSync(rotationLogPath);
                   expect(filesCreated.length).to.eql(2);
                   expect(filesCreated).not.to.include(dailyRotationPattern.file1);
                   expect(filesCreated).to.include(dailyRotationPattern.file2);
                   expect(filesCreated).to.include(dailyRotationPattern.file3);
                   done();
-                }, 500);
-              }, 100);
-            }, 100);
-          }, 100);
+                });
+              });
+            });
+          });
         });
       });
     });
